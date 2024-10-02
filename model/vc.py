@@ -78,6 +78,10 @@ class DiffVC(BaseModule):
         enc_dict = torch.load(enc_path, map_location=lambda loc, storage: loc)
         self.encoder.load_state_dict(enc_dict, strict=False)
 
+    def load_model(self, weight_path):
+        weights_dict = torch.load(weight_path, map_location=lambda loc, storage: loc)
+        self.load_state_dict(weights_dict, strict=False)
+
     @torch.no_grad()
     def forward(self, x, x_lengths, x_ref, x_ref_lengths, c, n_timesteps, 
                 mode='ml'):

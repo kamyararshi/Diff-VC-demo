@@ -14,7 +14,7 @@ import torch
 from torch.utils.data import DataLoader
 
 import params
-from data import VCDecDataset, VCDecBatchCollate
+from scenario.prepare_data import VCDecDataset, VCDecBatchCollate, OverFitDataset, OverFitBatchCollate
 from model.vc import DiffVC
 from model.utils import FastGL
 from utils import save_plot, save_audio
@@ -42,15 +42,16 @@ beta_max = params.beta_max
 random_seed = params.seed
 test_size = params.test_size
 
-data_dir = '../data/LibriTTS'
-val_file = 'filelists/valid.txt'
-exc_file = 'filelists/exceptions_libritts.txt'
+data_dir = './dataset'
+# val_file = 'filelists/valid.txt'
+# exc_file = 'filelists/exceptions_libritts.txt'
 
-log_dir = 'logs_dec'
+id = 'trump' #'musk' 
+log_dir = f'logs_dec/{id}'
 enc_dir = 'logs_enc'
-epochs = 110
-batch_size = 32
-learning_rate = 1e-4
+epochs = 40 # 110 for train from scratch and 40 for fine-tune and overfit
+batch_size = 8 # 32 for trump
+learning_rate = 1e-5 # 1e-5 for finr-tuning a pretrained vc model
 save_every = 1
 
 
@@ -62,10 +63,12 @@ if __name__ == "__main__":
     os.makedirs(log_dir, exist_ok=True)
 
     print('Initializing data loaders...')
-    train_set = VCDecDataset(data_dir, val_file, exc_file)
-    collate_fn = VCDecBatchCollate()
+    # train_set = VCDecDataset(data_dir, val_file, exc_file)
+    # collate_fn = VCDecBatchCollate()
+    train_set = OverFitDataset(data_dir, id=id) # Overfit Dataset of ID from RobVC
+    collate_fn = OverFitBatchCollate()
     train_loader = DataLoader(train_set, batch_size=batch_size, 
-                              collate_fn=collate_fn, num_workers=4, drop_last=True)
+                              collate_fn=collate_fn, num_workers=12, drop_last=True)
 
     print('Initializing and loading models...')
     fgl = FastGL(n_mels, sampling_rate, n_fft, hop_size).cuda()
@@ -73,6 +76,8 @@ if __name__ == "__main__":
                    dropout, window_size, enc_dim, spk_dim, use_ref_t, 
                    dec_dim, beta_min, beta_max).cuda()
     model.load_encoder(os.path.join(enc_dir, 'enc.pt'))
+    # Load pretrained vc
+    model.load_model("./checkpts/vc/vc_libritts_wodyn.pt")
 
     print('Encoder:')
     print(model.encoder)

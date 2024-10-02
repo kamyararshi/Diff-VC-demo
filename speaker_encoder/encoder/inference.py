@@ -35,7 +35,7 @@ def load_model(weights_fpath: Path, device="cpu"):
     checkpoint = torch.load(weights_fpath, map_location="cpu")
     _model.load_state_dict(checkpoint["model_state"])
     _model.eval()
-    print("Loaded encoder \"%s\" trained to step %d" % (weights_fpath.name, checkpoint["step"]))
+    print("Loaded encoder \"%s\" trained to step %d" % (weights_fpath, checkpoint["step"]))
     
     
 def is_loaded():
@@ -49,9 +49,9 @@ def embed_frames_batch(frames, use_torch=False):
     if not use_torch:
         frames = torch.from_numpy(frames)
     frames = frames.to(_device)
-    print(frames.shape)
+    # print(frames.shape)
     embeds = _model.forward(frames)
-    print(embeds.shape)
+    # print(embeds.shape)
     if not use_torch:
         embeds = embeds.detach().cpu().numpy()
     return embeds

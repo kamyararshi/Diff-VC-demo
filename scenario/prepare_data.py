@@ -11,6 +11,8 @@ import random
 import numpy as np
 import torch
 import tgt
+import torch.utils
+import torch.utils.data
 
 from params import seed as random_seed
 from params import n_mels, train_frames
@@ -327,6 +329,83 @@ class VCTKDecDataset(torch.utils.data.Dataset):
 
 
 class VCDecBatchCollate(object):
+    def __call__(self, batch):
+        B = len(batch)
+        mels1 = torch.zeros((B, n_mels, train_frames), dtype=torch.float32)
+        mels2 = torch.zeros((B, n_mels, train_frames), dtype=torch.float32)
+        max_starts = [max(item['mel'].shape[-1] - train_frames, 0)
+                      for item in batch]
+        starts1 = [random.choice(range(m)) if m > 0 else 0 for m in max_starts]
+        starts2 = [random.choice(range(m)) if m > 0 else 0 for m in max_starts]
+        mel_lengths = []
+        for i, item in enumerate(batch):
+            mel = item['mel']
+            if mel.shape[-1] < train_frames:
+                mel_length = mel.shape[-1]
+            else:
+                mel_length = train_frames
+            mels1[i, :, :mel_length] = mel[:, starts1[i]:starts1[i] + mel_length]
+            mels2[i, :, :mel_length] = mel[:, starts2[i]:starts2[i] + mel_length]
+            mel_lengths.append(mel_length)
+        mel_lengths = torch.LongTensor(mel_lengths)
+        embed = torch.stack([item['c'] for item in batch], 0)
+        return {'mel1': mels1, 'mel2': mels2, 'mel_lengths': mel_lengths, 'c': embed}
+
+
+class OverFitDataset(torch.utils.data.Dataset):
+    WAVPATH = "wavs/"
+    MELPATH = "mels/"
+    EMBEDSPATH = "embeds/"
+    def __init__(self, data_dir, id) -> None:
+        super().__init__()
+        self.WAVPATH = self.WAVPATH + id
+        self.MELPATH = self.MELPATH + id
+        self.EMBEDSPATH = self.EMBEDSPATH + id
+        self.filenames = os.listdir(os.path.join(data_dir, self.WAVPATH))
+        self.data_dir = data_dir
+        self.len = len(self.filenames)
+        self.train_files = self.filenames[:self.len-10]
+        self.valid_info = self.filenames[self.len-10:self.len]
+
+    def __len__(self) -> int:
+        return self.len
+    
+    def __getitem__(self, index) -> dict:
+        file = self.train_files[index]
+        mels, embed = self.get_vc_data(file)
+        return {'mel': mels, 'c': embed}
+    
+    def get_vc_data(self, file):
+        file_path = os.path.join(self.data_dir, self.WAVPATH, file)
+        mel_path = os.path.join(self.data_dir, self.MELPATH, os.path.splitext(file)[0] +  '_mel.npy')
+        embed_path = os.path.join(self.data_dir, self.EMBEDSPATH, os.path.splitext(file)[0] + '_embed.npy')
+        mels = self.get_mels(mel_path)
+        embed = self.get_embed(embed_path)
+        return (mels, embed)
+
+    def get_mels(self, mel_path):
+        mels = np.load(mel_path)
+        mels = torch.from_numpy(mels).float()
+        return mels
+
+    def get_embed(self, embed_path):
+        embed = np.load(embed_path)
+        embed = torch.from_numpy(embed).float()
+        return embed
+    
+    def get_valid_dataset(self):
+        pairs = []
+        for file in self.valid_info:
+            mels, embed = self.get_vc_data(file)
+            pairs.append((mels, embed))
+        return pairs
+
+    def __getitem__(self, index):
+        mels, embed = self.get_vc_data(self.filenames[index])
+        item = {'mel': mels, 'c': embed}
+        return item
+    
+class OverFitBatchCollate(object):
     def __call__(self, batch):
         B = len(batch)
         mels1 = torch.zeros((B, n_mels, train_frames), dtype=torch.float32)
